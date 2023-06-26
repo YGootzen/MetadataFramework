@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Gootzen
+    given-names: Yvonne
+    orcid: https://orcid.org/0000-0002-2208-612X
+title: "Software accompanying: A metadata-based framework for combining data sources in official statistics"
+version: 0.1
+date-released: 2023-06-26
