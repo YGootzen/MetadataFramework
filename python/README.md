@@ -1,0 +1,2 @@
+# Python approach
+This folder contains the object-oriented implementation in python. The notebook check_test_cases.ipynb is used to load and run various test cases. The notebook classes.ipynb contains all objects used in the implementation. Examples of these classes can be found in classes_examples.ipynb. The notebook test_case_mobility.ipynb contains all specifications required for the mobility use case. For implementing your own example, make a copy of test_case_mobility.ipynb and specify your own data, relations and models.
