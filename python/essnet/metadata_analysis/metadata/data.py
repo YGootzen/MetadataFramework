@@ -20,19 +20,12 @@ class Data(object):
         self.left_variables = set(left_variables)  # measurement variables
         self.right_variables = set(right_variables)  # identifier variables
         self.set_of_units = set_of_units
-        self.path_step = Step()
         self.score = False 
         self.name = name  # string: for printing a path that's easy to understand
         self.description = description  # string: a longer description that indicates the variables included in the data set
         
     def __str__(self):
-        left_str_separate = [str(v) for v in self.left_variables]
-        left_str_separate.sort()
-        left_str = ", ".join(left_str_separate)
-        right_str_separate = [str(v) for v in self.right_variables]
-        right_str_separate.sort()
-        right_str = ", ".join(right_str_separate)
-        full_str = self.name + " (" + left_str + " | " + right_str + ")" + "_" + self.set_of_units.name
+        full_str = self.name + " " + self.str_notation()
         return full_str
     
     def __eq__(self, other: "Data"):
@@ -57,6 +50,16 @@ class Data(object):
         str_no_name = " (" + left_str + " | " + right_str + ")" + self.set_of_units.name
 
         return hash(str(str_no_name))
+    
+    def str_notation(self):
+        left_str_separate = [str(v) for v in self.left_variables]
+        left_str_separate.sort()
+        left_str = ", ".join(left_str_separate)
+        right_str_separate = [str(v) for v in self.right_variables]
+        right_str_separate.sort()
+        right_str = ", ".join(right_str_separate)
+        notation = "(" + left_str + " | " + right_str + ")" + "_" + self.set_of_units.name
+        return notation
     
     def str_descriptive(self, legend_variables=None):
         """
@@ -93,7 +96,6 @@ class Data(object):
 
         return full_str
 
-    
     def equal_variables_only(self, other: "Data"): 
         # compare self Data object to the other Data object
         # similar to __eq__() except that this function does not care about set of included units
@@ -120,16 +122,66 @@ class Data(object):
         self.score = False
 
     def convert_variable(self, var_remove, var_add):
+        if var_remove.name != var_add.name:
+            # we can only convert within the same variable
+            # only the granularities may be different
+            return None
+        # create a copy of self as "input" for this conversion step
+        self_input = copy.deepcopy(self)
+
         # beware: the check if this conversion is allowed should be executed before this method is used
         self.left_variables.remove(var_remove)
         self.left_variables.add(var_add)
+
+        # document the change in the dataset in it's name and path
+        # * denotes: some change was made to the original data set
+        self.name = self.name + "*"
+        # look up if the conversion was the result of a model
+        # look up conversion graph
+        conversion_graph = ConversionGraph.get(var_remove.name)
+        # check if edge was result of a model
+        method_name, method_detail = conversion_graph.get_path_detail(
+            var_remove.granularity, var_add.granularity)
+
+        path_step = Step(method=method_name,
+                         method_detail=method_detail,
+                         input=str(self_input),
+                         output=str(self))
         self.score = False
+
+        return path_step
+
+
         
     def aggregate_variable(self, var_remove, var_add):
+        if var_remove.name != var_add.name:
+            # we can only aggregate within the same variable
+            # only the granularities may be different
+            return None
+        # create a copy of self as "input" for this aggregation step 
+        self_input = copy.deepcopy(self)
+
         # beware: the check if this aggregation is allowed should be executed before this method is used
         self.right_variables.remove(var_remove)
         self.right_variables.add(var_add)
+
+        # document the change in the dataset in it's name and path
+        # * denotes: some change was made to the original data set
+        self.name = self.name + "*"
+        # look up if the aggregation was the result of a model
+        # look up aggregation graph
+        aggregation_graph = AggregationGraph.get(var_remove.name)
+        # check if edge was result of a model
+
+        method_name, method_detail = aggregation_graph.get_path_detail(var_remove.granularity, var_add.granularity)
+
+        path_step = Step(method=method_name,
+                         method_detail=method_detail,
+                         input=str(self_input),
+                         output=str(self))
         self.score = False
+
+        return path_step
     
     def similarity(self, other: "Data", variant = "base", prints=False,
                    weight_right_sim = 1, weight_right_eq = 5, weight_left_sim = 2, weight_left_eq = 5,
@@ -219,7 +271,8 @@ class Data(object):
         # based on conversion and aggregation, give all unique datasets that can be created from datasource self, with exactly one manipulation
         
         # conversion
-        neighbours = set()
+        neighbours = []
+        path_steps = []
         for v in self.left_variables:
             # for each of the left variables, it can be converted to one of its connected granularities in the conversion graph
             conversion_graph = ConversionGraph.get(v.name)
@@ -227,13 +280,11 @@ class Data(object):
             for g in connected_granularities:
                 v2 = Variable(name=v.name, granularity = g)  # copy the name, but use new granularity
                 data_temp = copy.deepcopy(self)  # copy of the current data set
-                data_temp.name = self.name + "(->conv)"
-                data_temp.convert_variable(var_remove = v, var_add = v2)  # apply conversion (we have checked that it is valid when creating connected_granularities)
-                data_temp.path_step = Step(method="convert", 
-                                              method_detail = str(v) + " to " + str(v2), 
-                                              input="",
-                                           output=str(data_temp))
-                neighbours.add(data_temp)
+                # * denotes: some change was made to the original data set
+                data_temp.name = self.name + "*"
+                path_step_tmp = data_temp.convert_variable(var_remove = v, var_add = v2)  # apply conversion (we have checked that it is valid when creating connected_granularities)
+                neighbours.append(data_temp)
+                path_steps.append(path_step_tmp)
         
         # aggregation 
         if agg:
@@ -245,19 +296,13 @@ class Data(object):
                 for g in connected_granularities:
                     v2 = Variable(name=v.name, granularity = g)  # copy the name, but use new granularity
                     data_temp = copy.deepcopy(self)
-                    #data_temp.name = self.name + "(->agg)"
-                    data_temp.name = self.name + "("+str(v) + " -agg-> " + str(v2) + ")"
-                    data_temp.aggregate_variable(var_remove = v, var_add = v2)
-                    data_temp.path_step = Step(method="aggregate",
-                                                  method_detail=str(
-                                                      v) + " to " + str(v2),
-                                                  input="",
-                                               output=str(data_temp))
-                    neighbours.add(data_temp)
+                    path_step_tmp = data_temp.aggregate_variable(var_remove=v, var_add=v2)
+                    neighbours.append(data_temp)
+                    path_steps.append(path_step_tmp)
                     
         # combination is not relevant when looking at a single data source, because two sources are always required for combining
         
-        return neighbours
+        return neighbours, path_steps
     
     def shrink(self, other: "Data"): 
         """

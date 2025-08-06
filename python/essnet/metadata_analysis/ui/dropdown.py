@@ -20,5 +20,3 @@ def create_dropdown(description, options):
         style={'description_width': 'initial'}  # Show full question
     )
     return dropdown
-
-

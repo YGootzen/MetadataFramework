@@ -4,5 +4,3 @@ class NotInitialisedError(Exception):
 
 class BadUnionError(Exception):
     pass
-
-

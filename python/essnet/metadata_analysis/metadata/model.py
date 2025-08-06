@@ -125,7 +125,7 @@ class Model:
 
                 if len(output_list) > 0:
                     # One ore more results were found, these can now be returned
-                    return output_list
+                    return set(output_list)
             else:
                 return False
                  

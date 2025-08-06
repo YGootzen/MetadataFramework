@@ -6,7 +6,7 @@ class Variable:
         self.granularity = granularity
 
     def __str__(self):
-        return str(self.name) + "_" + str(self.granularity) 
+        return str(self.name) + str(self.granularity) 
     
     def __eq__(self, other: "Variable"):
         # compare self Variable object to the other Variable object

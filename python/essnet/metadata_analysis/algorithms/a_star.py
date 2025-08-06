@@ -57,6 +57,7 @@ def prep_rhs(start_set, goal):
     for data_source in start_set.set_of_sources:
         # for each of the data sources, we'll check if we can aggregate (some of) it's rhs variables to match the goal rhs
         data_source_new = copy.deepcopy(data_source)
+        path_steps = []  # for explaining the step in the path, all aggregation details
 
         for v_r in data_source.right_variables:
             # check if one of the goal rhs variables can be reached by this variable
@@ -68,20 +69,18 @@ def prep_rhs(start_set, goal):
 
                 if v2 in goal.right_variables:
                     # a rhs variable of the goal is reached! 
-                    data_source_new.aggregate_variable(var_remove = v_r, var_add = v2)
+                    path_step_tmp = data_source_new.aggregate_variable(var_remove = v_r, var_add = v2)
+                    # add to the method_detail for the path:
+                    path_steps.append(path_step_tmp)
+
                     # there should only be one (since variable names should only occur once in the rhs)
                     break # step out of the v_r for loop
         if data_source_new!=data_source:
             # some change has been made by the rhs preprocessing
             # once all variables have been checked, we can add the data_source_new to the new start_set
-            start_set_copy.add_data_source(
-                data_source_new, path_step=Step(method="aggregate",
-                                                method_detail="",
-                                                input=data_source,
-                                                output=data_source_new))
-# start_set_copy.add_data_source(
-#            data_source_new, path_step = "aggregate: "+str(data_source)+" -> "+str(data_source_new))
 
+            start_set_copy.add_data_source(data_source_new, path_step=path_steps)
+            
     return start_set_copy
 
 
@@ -188,8 +187,24 @@ def a_star(start_set, goal, models, max_iteration, similarity_choice = "sum", pr
             print("   Path length: " + str(len(current_set.path)))
             print("   Current path: " + str(current_set.path))
           
-        # check if the goal has been reached
-        if(current_set.contains(goal)):
+
+        if False:
+            # check if the goal has been reached
+            if (current_set.contains(goal)):
+                # A valid path was found
+                if find_multiple_paths:
+                    # User wants multiple valid paths, so save result and continue
+                    success_list.append(current_set)
+                else:
+                    # User wants a single valid path, so return this path
+                    return current_set
+
+        # check if the goal has been reached (by equality), if not check if the goal is reached by shrinking 
+        # one of the sources in the current set. If so, this means we need a last step in the path: "contain"
+        # This happens in the contains_shrink() function
+        goal_found = current_set.contains(goal) or current_set.contains_shrink(goal)
+                             
+        if goal_found:
             # A valid path was found
             if find_multiple_paths:
                 # User wants multiple valid paths, so save result and continue
@@ -206,11 +221,13 @@ def a_star(start_set, goal, models, max_iteration, similarity_choice = "sum", pr
         # If modelling is possible, we will try this first (it is usually a good idea to prioritise this)
         # The neighbours found by modelling will be explored in the next step. Later, the non-modelling 
         # neighbours can always be found again.
-        all_neighbours_mod = current_set.get_neighbours_models(models=models)  # only modelling
-        for neighbour in all_neighbours_mod:
+        all_neighbours_mod, all_path_steps_mod = current_set.get_neighbours_models(
+            models=models)  # only modelling
+        
+        for neighbour, path_step in zip(all_neighbours_mod, all_path_steps_mod):
             # each neighbour of the current set can be created and added to the set
             new_set_tmp = copy.deepcopy(current_set)
-            new_set_tmp.add_data_source(neighbour, neighbour.path_step, i)  
+            new_set_tmp.add_data_source(neighbour, path_step, i)
 
             if (new_set_tmp not in open_list) and (new_set_tmp not in closed_list):
                 # the new set is not already waiting to be evaluated (open_list) and has also not been 
@@ -220,22 +237,37 @@ def a_star(start_set, goal, models, max_iteration, similarity_choice = "sum", pr
         
         if n_neighbours_model == 0:
             # No models led to new results. So we will now check if combination, aggregation and conversion can be applied
-            all_neighbours_reg = current_set.get_neighbours(agg=agg)  # except modelling (and depending on agg, perhaps also without aggregation)
+            all_neighbours_reg, all_path_steps_reg = current_set.get_neighbours(agg=agg)  # except modelling (and depending on agg, perhaps also without aggregation)
 
             if agg==False & len(all_neighbours_reg)==0:
                 # if without aggregation there were no neighbours found, we will now try once with aggregation
-                all_neighbours_reg = current_set.get_neighbours(agg=True)  # except modelling
+                all_neighbours_reg, all_path_steps_reg = current_set.get_neighbours(agg=True)  # except modelling
 
-            for neighbour in all_neighbours_reg:
-                # each neighbour of the current set can be created and added to the set
-                new_set_tmp = copy.deepcopy(current_set)
-                new_set_tmp.add_data_source(neighbour, neighbour.path_step, i)  
+            for neighbour, path_step in zip(all_neighbours_reg, all_path_steps_reg):
+   
+                # in some cases, models may result in a list of possible outputs
+                # we want to add each of these outputs as a separate neighbour
+                if isinstance(neighbour, list): 
+                    for neighbour_subdata in neighbour:
+                        # each neighbour of the current set can be created and added to the set
+                        new_set_tmp = copy.deepcopy(current_set)
+                        new_set_tmp.add_data_source(neighbour_subdata, path_step, i)
 
-                if (new_set_tmp not in open_list) and (new_set_tmp not in closed_list):
-                    # the new set is not already waiting to be evaluated (open_list) and has also not 
-                    # been evaluated yet (closed_list)
-                    open_list.append(new_set_tmp)
-                    n_neighbours_nonmodel += 1
+                        if (new_set_tmp not in open_list) and (new_set_tmp not in closed_list):
+                            # the new set is not already waiting to be evaluated (open_list) and has also not
+                            # been evaluated yet (closed_list)
+                            open_list.append(new_set_tmp)
+                            n_neighbours_nonmodel += 1
+                else:
+                    # each neighbour of the current set can be created and added to the set
+                    new_set_tmp = copy.deepcopy(current_set)
+                    new_set_tmp.add_data_source(neighbour, path_step, i)
+
+                    if (new_set_tmp not in open_list) and (new_set_tmp not in closed_list):
+                        # the new set is not already waiting to be evaluated (open_list) and has also not 
+                        # been evaluated yet (closed_list)
+                        open_list.append(new_set_tmp)
+                        n_neighbours_nonmodel += 1
         
         if prints:
             print("   New neighbours: " + str(n_neighbours_model + n_neighbours_nonmodel)

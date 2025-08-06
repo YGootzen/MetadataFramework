@@ -6,6 +6,17 @@ from metadata_analysis.metadata.errors import NotInitialisedError
 #from aggregation_table import AggregationTable
 
 class AggregationGraph:
+    """
+    Graph with edges that describe how variables can be aggregated between granularities. 
+    Edges may have optional properties, such as:
+        - AggregationTable: describes the relation of values between the granularities
+        - ModelSingleUse: should be present if the edge is the result of a single use 
+                model. This should be reflected in the path, especially for models
+                that are conditional on the availability of data sets.
+    """
+
+
+
     instances = []  # class attribute to keep track of class instances
     
     def __init__(self, variable_name, granularities, aggregation_edges):
@@ -44,14 +55,10 @@ class AggregationGraph:
         list_form = [inst for inst in cls.instances if inst.variable_name == var_name]
         return len(list_form) > 0
 
-    def get_max_granularities(self):
-        return max(self.granularities)        
-
-    def add_granularity(self, new_granularity):
-        self.Graph.add_node(new_granularity)
-
-    def add_aggregation_edge(self, new_edge):
+    def add_aggregation_edge(self, new_edge, model = None):
         self.Graph.add_edge(*new_edge)  # * unpacks edge tuple
+        if model:
+            self.Graph.edges[*new_edge]["Model"] = model
 
     def plot_graph(self): 
         # Legenda: 
@@ -220,7 +227,37 @@ class AggregationGraph:
         all_possible_values = set(from_values).union(set(to_values))
 
         return all_possible_values
+    
+    def get_path_detail(self, granularity_from, granularity_to):
+        """
+        Use this function when determining what method details to provide to the path step for an aggregation 
+        from granularity_from to granularity_to. If models are necessary in the path, we need to include
+        this in the path step. So we need to check for every edge in the path if a model was required to
+        create the edge. For edges that were originally available, we don't add to the method details string.
+        """
+
+        # get all paths
+        all_paths = list(nx.all_simple_paths(self.Graph, granularity_from, granularity_to))
         
+        # select the shortest path
+        path_choice = min(all_paths, key=len)
+
+        method_name = "aggregation"
+        method_details = []
+
+        # check if models are used along this path
+        for edge in zip(path_choice, path_choice[1:]):
+            # zip to create all edges
+            if "Model" in self.Graph.edges[*edge]:
+                method_name = "model"
+                method_details.append(self.Graph.edges[*edge]["Model"].name + " "+self.variable_name + ": " + str(edge[0]) + "\u2192" + str(edge[1]))
+            else:
+                method_details.append(self.variable_name + ": " + str(edge[0]) + "\u2192" + str(edge[1]))
+
+        method_detail = "; ".join(method_details)
+
+        return method_name, method_detail
+    
         
 class AggregationTable:
     instances = []  # class attribute to keep track of class instances
@@ -285,9 +322,6 @@ class AggregationTable:
         
     @classmethod 
     def get(cls: "AggregationTable", var_name, granularity_from, granularity_to):
-        # return the instance of this class for which the value variable_name is equal to var_name
-        # each AggregationGraph object should exist exactly once for each variable_name
-
         # first we make a list of "all" instances that statisfy the desired variable name, granularity_from and granularity_to
         list_form = [inst for inst in cls.instances if (inst.variable_name == var_name and 
                                                         inst.granularity_from == granularity_from and 

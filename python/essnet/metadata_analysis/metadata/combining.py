@@ -34,5 +34,3 @@ def combines(data1: Data, data2: Data):
                            name = "combine ("+data1.name+"+"+data2.name+")")
         
     return rowwise, colwise
-        
-   

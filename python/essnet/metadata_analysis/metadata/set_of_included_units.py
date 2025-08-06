@@ -212,12 +212,6 @@ class SetOfIncludedUnits:
         # set of included units. An example of such a case is when all variables are specified on the same granularity
         # and the two sets only differ on the value of one variable. 
 
-        # In many other cases, the union of two sets of included units cannot be written nicely. This happens
-        # when the two sets have a non-rectangular shape when drawn (see notes from 23-05-2025).
-
-        # For now, we'll simply reference to a union() as a set of included units, defined
-        # by two other sets of inlcuded units. 
-
         return SetOfIncludedUnitsUnion([self, other])
 
 
@@ -431,7 +425,6 @@ class SetOfIncludedUnitsUnion(SetOfIncludedUnits):
 
     def union(self, other: Union['SetOfIncludedUnits', 'SetOfIncludedUnitsUnion']):
         # union of tho SOIU(C)
-        
         if isinstance(other, SetOfIncludedUnits):
             list_to_add = [other]
         else:
